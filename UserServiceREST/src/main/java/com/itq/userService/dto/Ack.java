@@ -4,6 +4,7 @@ public class Ack {
 	
 	private int code;
 	private String description;
+	
 	public int getCode() {
 		return code;
 	}
