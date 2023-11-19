@@ -109,7 +109,7 @@ public class UserDao {
 
         // Step 2: Insert data into the 'user' table
         StringBuffer userSql = new StringBuffer("");
-        userSql.append("INSERT INTO user (userId, name, lastname, addressId, phone, email, rfc, password, type) ");
+        userSql.append("INSERT INTO users (userId, name, lastname, phone, email, rfc, password, type, addressId) ");
         userSql.append("VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
         final String userQuery = userSql.toString();
 
@@ -121,12 +121,12 @@ public class UserDao {
                     ps.setInt(1, user.getUserID());
                     ps.setString(2, user.getName());
                     ps.setString(3, user.getLastname());
-                    ps.setInt(4, addressId);
-                    ps.setString(5, user.getPhone());
-                    ps.setString(6, user.getMail());
-                    ps.setString(7, user.getRfc());
-                    ps.setString(8, user.getPassword());
-                    ps.setString(9, user.getType());
+                    ps.setString(4, user.getPhone());
+                    ps.setString(5, user.getMail());
+                    ps.setString(6, user.getRfc());
+                    ps.setString(7, user.getPassword());
+                    ps.setString(8, user.getType());
+                    ps.setInt(9, addressId);
                     return ps;
                 }
             }, userKeyHolder);
@@ -142,7 +142,7 @@ public class UserDao {
 
     public User getUserById(int userId) {
         StringBuffer sql = new StringBuffer("");
-        sql.append("SELECT * FROM user INNER JOIN address ON user.addressId = address.addressId WHERE userId = ?");
+        sql.append("SELECT * FROM users INNER JOIN address ON users.addressId = address.addressId WHERE userId = ?");
         final String query = sql.toString();
         try {
             @SuppressWarnings("deprecation")
@@ -157,7 +157,7 @@ public class UserDao {
 
     public boolean updateUser(int userId, User user) {
     // Step 1: Update data in the 'user' table
-    String userSql = "UPDATE user SET name = ?, lastname = ?, phone = ?, email = ?, rfc = ?, password = ?, type = ? WHERE userId = ?";
+    String userSql = "UPDATE users SET name = ?, lastname = ?, phone = ?, email = ?, rfc = ?, password = ?, type = ? WHERE userId = ?";
     
     // Step 2: Update data in the 'address' table
     String addressSql = "UPDATE address SET street = ?, exteriorNumber = ?, interiorNumber = ?, suburb = ?, city = ?, state = ?, country = ?, zipCode = ? WHERE addressId = ?";
@@ -221,7 +221,7 @@ public class UserDao {
             }
             int addressId = userToDelete.getAddress().getAddressID();
             // Delete the user
-            String userSql = "DELETE FROM user WHERE userId = ?";
+            String userSql = "DELETE FROM users WHERE userId = ?";
             jdbcTemplate.update(userSql, userId);
             LOGGER.info("User with ID {} deleted successfully", userId);
 
@@ -240,7 +240,7 @@ public class UserDao {
 
     public List <User> getAllUsers() {
         StringBuffer sql = new StringBuffer("");
-        sql.append("SELECT * FROM user INNER JOIN address ON user.addressId = address.addressId");
+        sql.append("SELECT * FROM users INNER JOIN address ON users.addressId = address.addressId");
         final String query = sql.toString();
         try {
             List <User> users = jdbcTemplate.query(query, new UserRowMapper());
