@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
-
 import com.itq.productService.business.ProductBusiness;
 import com.itq.productService.dto.Ack;
 import com.itq.productService.dto.Product;

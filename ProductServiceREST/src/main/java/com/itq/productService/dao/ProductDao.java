@@ -1,21 +1,22 @@
 package com.itq.productService.dao;
 
-import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
+import java.util.Objects;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.PreparedStatementCreator;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
 
+import com.itq.productService.dto.Characteristics;
 import com.itq.productService.dto.Product;
 
 @Repository
@@ -27,7 +28,7 @@ public class ProductDao {
     private JdbcTemplate jdbcTemplate;
 
     public boolean isProviderUser(int userId) {
-        String sql = "SELECT COUNT(*) FROM user WHERE userId = ? AND type = 'Provider'";
+        String sql = "SELECT COUNT(*) FROM users WHERE userId = ? AND type = 'Provider'";
         int count = jdbcTemplate.queryForObject(sql, Integer.class, userId);
         return count > 0;
     }
@@ -37,51 +38,40 @@ public class ProductDao {
         public Product mapRow(ResultSet rs, int rowNum) throws SQLException {
             Product product = new Product();
             product.setProductId(rs.getInt("productId"));
-            product.setProviderId(rs.getInt("providerId"));
             product.setProductName(rs.getString("productName"));
             product.setProductPrice(rs.getDouble("productPrice"));
             product.setProductStock(rs.getInt("stock"));
             product.setProductBrand(rs.getString("productBrand"));
             product.setProductCategory(rs.getString("category"));
+            product.setProviderId(rs.getInt("providerId"));
+
+            String characteristicSql = "SELECT * FROM characteristics WHERE productId = ?";
+            @SuppressWarnings("deprecation")
+			List<Characteristics> characteristics = jdbcTemplate.query(characteristicSql, new Object[]{product.getProductId()}, new RowMapper<Characteristics>() {
+                @Override
+                public Characteristics mapRow(ResultSet rs, int rowNum) throws SQLException {
+                    Characteristics characteristic = new Characteristics();
+                    characteristic.setName(rs.getString("characteristicName"));
+                    characteristic.setValue(rs.getString("characteristicValue"));
+                    return characteristic;
+                }
+            });
+            product.setProductCharacteristics(characteristics);
             return product;
         }
     }
 
-    public boolean createProduct(final Product product) {
-        int userId = product.getProviderId();
-
-        // Verify that the user exists and is a Provider
-        if (!isProviderUser(userId)) {
-            LOGGER.error("Error creating product: User with ID {} either does not exist or is not a Provider.", userId);
-            return false;
+    private void updateCharacteristics(int productId, List<Characteristics> characteristicsList) {
+        // Delete existing characteristics for the product
+        String deleteCharacteristicsSql = "DELETE FROM characteristics WHERE productId = ?";
+        jdbcTemplate.update(deleteCharacteristicsSql, productId);
+    
+        // Insert new characteristics
+        if (characteristicsList != null && !characteristicsList.isEmpty()) {
+            for (Characteristics characteristic : characteristicsList) {
+                insertCharacteristic(productId, characteristic);
+            }
         }
-        StringBuffer productSql= new StringBuffer("");
-        productSql.append("INSERT INTO product (productId, providerId, productName, productPrice, stock, productBrand, category) ");
-        productSql.append("VALUES (?, ?, ?, ?, ?, ?, ?)");
-        final String productQuery = productSql.toString();
-
-        try {
-            GeneratedKeyHolder productKeyHolder = new GeneratedKeyHolder();
-            jdbcTemplate.update(new PreparedStatementCreator() {
-                @Override
-                public PreparedStatement createPreparedStatement(Connection connection) throws SQLException {
-                    PreparedStatement ps = connection.prepareStatement(productQuery, java.sql.Statement.RETURN_GENERATED_KEYS);
-                    ps.setInt(1, product.getProductId());
-                    ps.setInt(2, userId);
-                    ps.setString(3, product.getProductName());
-                    ps.setDouble(4, product.getProductPrice());
-                    ps.setInt(5, product.getProductStock());
-                    ps.setString(6, product.getProductBrand());
-                    ps.setString(7, product.getProductCategory());
-                    return ps;
-                }
-            }, productKeyHolder);
-            LOGGER.info("Product created succesfully with ID: { " + productKeyHolder.getKey().intValue() + " }");
-            return true;
-        } catch (Exception e) {
-            LOGGER.error("Error creating product in the database. Message " + e.getMessage());
-        }
-        return false;
     }
 
     public boolean updateProduct(int productId, Product product) {
@@ -103,7 +93,7 @@ public class ProductDao {
             }
 
             StringBuffer productSql= new StringBuffer("");
-            productSql.append("UPDATE product SET productName = ?, productPrice = ?, stock = ?, productBrand = ?, category = ? ");
+            productSql.append("UPDATE products SET productName = ?, productPrice = ?, stock = ?, productBrand = ?, category = ? ");
             productSql.append("WHERE productId = ? AND providerId = ?");
             final String productQuery = productSql.toString();
         
@@ -118,8 +108,10 @@ public class ProductDao {
                 ps.setInt(7, userId);
                 return ps;
             });
+            // Update or insert characteristics
+            updateCharacteristics(productId, product.getProductCharacteristics());
 
-            LOGGER.info("Product updated succesfully with ID: { " + productId + " }");
+            LOGGER.info("Product updated successfully with ID: { " + productId + " }");
             return true;
         } catch (DataAccessException e) {
             LOGGER.error("Error updating product with ID {} in the database. Message {}", productId, e.getMessage());
@@ -130,7 +122,7 @@ public class ProductDao {
 
     public Product getProductById(int productId) {
         StringBuffer productSql= new StringBuffer("");
-        productSql.append("SELECT * FROM product WHERE productId = ?");
+        productSql.append("SELECT * FROM products WHERE productId = ?");
         final String productQuery = productSql.toString();
 
         try {
@@ -151,8 +143,13 @@ public class ProductDao {
             return false;
         }
         StringBuffer productSql= new StringBuffer("");
-        productSql.append("DELETE FROM product WHERE productId = ? AND providerId = ?");
+        productSql.append("DELETE FROM products WHERE productId = ? AND providerId = ?");
         final String productQuery = productSql.toString();
+
+        //Also delete the characteristics of the product
+        String characteristicSql = "DELETE FROM characteristics WHERE productId = ?";
+        jdbcTemplate.update(characteristicSql, productId);
+        LOGGER.info("Characteristics deleted succesfully for product with ID: { " + productId + " }");
 
         try {
             int rowsAffected = jdbcTemplate.update(productQuery, productId, userId);
@@ -170,7 +167,7 @@ public class ProductDao {
 
     public List <Product> getAllProducts() {
         StringBuffer productSql= new StringBuffer("");
-        productSql.append("SELECT * FROM product");
+        productSql.append("SELECT * FROM products");
         final String productQuery = productSql.toString();
 
         try {
@@ -185,7 +182,7 @@ public class ProductDao {
 
     public List <Product> getProductsByCategory(String category) {
         StringBuffer productSql= new StringBuffer("");
-        productSql.append("SELECT * FROM product WHERE category = ?");
+        productSql.append("SELECT * FROM products WHERE category = ?");
         final String productQuery = productSql.toString();
 
         try {
@@ -206,7 +203,7 @@ public class ProductDao {
             return null;
         }
         StringBuffer productSql= new StringBuffer("");
-        productSql.append("SELECT * FROM product WHERE providerId = ?");
+        productSql.append("SELECT * FROM products WHERE providerId = ?");
         final String productQuery = productSql.toString();
 
         try {
@@ -218,6 +215,60 @@ public class ProductDao {
             LOGGER.error("Error retrieving all the products from the database. Message " + e.getMessage());
         }
         return null;
+    }
+
+    
+    public boolean createProduct(final Product product) {
+        int userId = product.getProviderId();
+
+        // Verify that the user exists and is a Provider
+        if (!isProviderUser(userId)) {
+            LOGGER.error("Error creating product: User with ID {} either does not exist or is not a Provider.", userId);
+            return false;
+        }
+
+        // Insert product
+        StringBuffer productSql = new StringBuffer("");
+        productSql.append("INSERT INTO products (productId, productName, productPrice, stock, productBrand, category, providerId) ");
+        productSql.append("VALUES (?, ?, ?, ?, ?, ?, ?)");
+        final String productQuery = productSql.toString();
+
+        try {
+            GeneratedKeyHolder productKeyHolder = new GeneratedKeyHolder();
+            jdbcTemplate.update(connection -> {
+                PreparedStatement ps = connection.prepareStatement(productQuery, Statement.RETURN_GENERATED_KEYS);
+                ps.setInt(1, product.getProductId());
+                ps.setString(2, product.getProductName());
+                ps.setDouble(3, product.getProductPrice());
+                ps.setInt(4, product.getProductStock());
+                ps.setString(5, product.getProductBrand());
+                ps.setString(6, product.getProductCategory());
+                ps.setInt(7, userId);
+                return ps;
+            }, productKeyHolder);
+
+            int productId = Objects.requireNonNull(productKeyHolder.getKey()).intValue();
+
+            // Insert characteristics
+            List<Characteristics> characteristicsList = product.getProductCharacteristics();
+            if (characteristicsList != null && !characteristicsList.isEmpty()) {
+                for (Characteristics characteristic : characteristicsList) {
+                    insertCharacteristic(productId, characteristic);
+                }
+            }
+
+            LOGGER.info("Product created successfully with ID: { " + productId + " }");
+            return true;
+        } catch (Exception e) {
+            LOGGER.error("Error creating product in the database. Message " + e.getMessage());
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    private void insertCharacteristic(int productId, Characteristics characteristic) {
+        String characteristicSql = "INSERT INTO characteristics (characteristicName, characteristicValue, productId) VALUES (?, ?, ?)";
+        jdbcTemplate.update(characteristicSql, characteristic.getName(), characteristic.getValue(), productId);
     }
 
 }
